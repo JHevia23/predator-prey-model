@@ -7,11 +7,9 @@ import numpy as np
 import random
 from celluloid import Camera
 
-plt.style.use('seaborn-pastel')
-
 np.random.seed(1234)
 
-grid = Grid(10, 10)
+grid = Grid(100, 100)
 
 wolf1 = Wolf(grid)
 wolf2 = Wolf(grid)
@@ -48,12 +46,12 @@ for i in range(100):
     plt.scatter(xs, ys, c=c)
     camera.snap()
 
-animation = camera.animate(interval=100)
+animation = camera.animate(interval=20)
 
 import matplotlib.animation as mp_anim
 # Writer = mp_anim.PillowWriter(fps=30)
 # writer = Writer(fps=15, metadata=dict(artist='Me'), bitrate=1800)
 
-writer = mp_anim.PillowWriter(fps=30)
+writer = mp_anim.PillowWriter(fps=100)
 animation.save('test.gif', writer=writer)
 # %%

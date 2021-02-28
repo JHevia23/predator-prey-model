@@ -33,21 +33,24 @@ class Wolf():
         ## check if there's a neighbouring sheep
         prey = self.locate_sheep(sense='SIGHT')
         if prey:
-            ## call the pos attribute of the Sheep Agent
-            next_pos = prey.pos
+            ## call the pos attribute of the Sheep Agent, and the next movement will be equal to the distance between
+            # prey and predator
+            next_pos = self.pos - prey.pos
         else:
             ## if there aren't, smell for sheep and move
             located_sheep = self.locate_sheep(sense='SMELL')
             if located_sheep:
-                seizable_distance = ((self.pos - located_sheep.pos) / np.linalg.norm((self.pos - located_sheep.pos))) * self.MOVE_STEPS
-                next_pos = self.pos + seizable_distance
+                next_pos = ((self.pos - located_sheep.pos) / np.linalg.norm((self.pos - located_sheep.pos))) * self.MOVE_STEPS                
             else:
                 ## add random noise to actual position to simulate wandering
-                next_pos = self.pos + np.random.uniform(0, 3, size=2)
+                # next_pos = self.pos + np.random.uniform(0, 1, size=2)
+                next_pos = np.random.uniform(-self.MOVE_STEPS, self.MOVE_STEPS, size=2)
 
-            ## assign new position to current position
-            self.pos = next_pos
+        next_pos = utils.check_spatial_coherence(self, next_pos)
         
+        ## assign new position to current position
+        self.pos = self.pos + next_pos
+
         return self.pos
 
     def locate_sheep(self, sense='SIGHT'):
@@ -59,7 +62,7 @@ class Wolf():
         if any distance is less than the wolf's smell radius.
 
         - Return:
-            - True if there's a sheep inside smell radius, False otherwise
+            - closest Sheep Agent or None if there aren't
         '''
         # sheeps = self.SPACE.get_population(type=utils.TYPE_CONSTANT_SHEEP)
         sheeps = np.array([sheep for sheep in self.SPACE.agent_population.values() if sheep.TYPE == utils.TYPE_CONSTANT_SHEEP])
@@ -95,7 +98,6 @@ class Wolf():
                 ## return None if now sheeps were found
                 return None
             
-            ## returns the closest Sheep Agent or None if there aren't
             
 
 
@@ -125,7 +127,9 @@ class Sheep():
         The movement decision function of sheeps is simpler: they will run from wolves if they're
         inside their sight radius.
 
-        If the sheeps don't see a wolf, they wander around randomly. TODO: add grass to space
+        If the sheeps don't see a wolf, they wander around randomly. 
+        
+        // TODO: add grass to space
         '''
         ## check nearby wolves
         # wolves = self.SPACE.get_population(type=utils.TYPE_CONSTANT_WOLF)
@@ -138,9 +142,21 @@ class Sheep():
         if min_distance <= self.SIGHT_RADIUS:
             ## if a wolf is too nearby, the sheep will move further away from it
             distance_to_wolf = np.array(self.pos - nearest_wolf.pos) / np.linalg.norm(self.pos - nearest_wolf.pos)
-            next_pos = self.pos + distance_to_wolf * self.MOVE_STEPS
-        else:
-            next_pos = self.pos + np.random.uniform(0, 3, size=2)
+            
+            # create rotation matrix to prevent moving exactly in the opposite direction
+            distance_to_wolf = utils.random_rotation(distance_to_wolf)
+            
+            # next_pos = self.pos + distance_to_wolf * self.MOVE_STEPS
+            # next_pos = self.pos + distance_to_wolf
+            next_pos = distance_to_wolf
 
-        self.pos = next_pos
+        else:
+            # next_pos = self.pos + np.random.uniform(0, 3, size=2)
+            next_pos = np.random.uniform(-self.MOVE_STEPS, self.MOVE_STEPS, size=2)
+
+        next_pos = utils.check_spatial_coherence(self, next_pos)
+        
+        ## update new position
+        self.pos = self.pos + next_pos
+        
         return self.pos
