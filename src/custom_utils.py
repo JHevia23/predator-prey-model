@@ -4,7 +4,10 @@ STATE_CONSTANT_ALIVE = 'ALIVE'
 STATE_CONSTANT_DEAD = 'DEAD'
 
 SIGHT_RADIUS_WOLF = 5
+SMELL_RADIUS_WOLF = 10
+
 SIGHT_RADIUS_SHEEP = 3
+
 
 
 import numpy as np
@@ -63,7 +66,7 @@ def simulate(grid, n_iter=300, output_path='test.gif'):
         xs = [agent.pos[0] for agent in grid.agent_population.values()]
         ys = [agent.pos[1] for agent in grid.agent_population.values()]
         c = ['red' if agent.TYPE == 'WOLF' else 'green' for agent in grid.agent_population.values()]
-        s = [100 if agent.TYPE == 'WOLF' else 50 for agent in grid.agent_population.values()]
+        s = [50*agent.DEATH_COUNT if agent.TYPE == 'WOLF' else 50 for agent in grid.agent_population.values()]
 
         ## also plot dead body locations
         xs_dead = [loc[0] for loc in grid.dead_sheep_locations]

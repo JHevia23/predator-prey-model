@@ -1,5 +1,6 @@
 import numpy as np
 import custom_utils as utils
+from collections import defaultdict
 
 class Wolf():
 
@@ -15,9 +16,10 @@ class Wolf():
         self.STATE = utils.STATE_CONSTANT_ALIVE
 
         ## define simulation key parameters
-        self.SMELL_RADIUS = 5
+        self.SMELL_RADIUS = utils.SMELL_RADIUS_WOLF
         self.SIGHT_RADIUS = utils.SIGHT_RADIUS_WOLF
         self.MOVE_STEPS = 2
+        self.DEATH_COUNT = 0
 
         ## it's a tuple representing the coordinates for the wolf position
         initx = np.random.uniform(low=0, high=self.SPACE.XMAX)
@@ -32,6 +34,9 @@ class Wolf():
         self.ID = utils.TYPE_CONSTANT_WOLF+str(self.COUNTER)
         grid.add_agent(self, agent_id=self.ID)
         Wolf.COUNTER+=1
+
+        ## agents' weights for decision
+        self.WEIGHTS = np.random.normal(size=3)
         
     def move(self):
         '''
@@ -46,6 +51,7 @@ class Wolf():
             ## call the pos attribute of the Sheep Agent, and the next movement will be equal to the distance between
             # prey and predator
             next_pos = self.pos - prey.pos
+            self.DEATH_COUNT += 1
             
         else:
             ## if there aren't, smell for sheep and move
@@ -113,7 +119,66 @@ class Wolf():
                 ## return None if now sheeps were found
                 return None
             
-            
+    def perceive(self, direction):
+        '''
+        direction: angle to which the wolf is looking (0, 90, 180, 270)
+        build a dictionary of the agents within smell radius and sight radius.
+
+        - Returns
+            - res_dict, keys: SIGHT, SMELL, values: list with agents
+        '''
+        res_dic = {}
+
+        sheeps = [agent for agent in self.SPACE.agent_population.values() if agent.TYPE == utils.TYPE_CONSTANT_SHEEP]
+        # set angle limits to perceive
+        alpha_min = np.deg2rad(direction - 45)
+        alpha_max = np.deg2rad(direction + 45)
+
+        ## detect with SIGHT
+        sight_sheep = [
+            sheep for sheep in sheeps if (np.linalg.norm(sheep.pos - self.pos) <= self.SIGHT_RADIUS) &
+                                         (alpha_min <= np.dot(sheep.SIGHT_DIRECTION, self.SIGHT_DIRECTION) <= alpha_max)
+        ]
+
+        res_dic['SIGHT'] = sight_sheep
+
+        ## detect with SMELL
+        smell_sheep = [
+            sheep for sheep in sheeps if (np.linalg.norm(sheep.pos - self.pos) <= self.SMELL_RADIUS) &
+                                         (alpha_min <= np.dot(sheep.SIGHT_DIRECTION, self.SIGHT_DIRECTION) <= alpha_max)
+        ]
+
+        res_dic['SMELL'] = smell_sheep
+
+        return res_dic
+
+    def calculate_Qvalues(self):
+
+        # directions to query
+        directions = [0, 90, 180, 270]
+        # dic to save the features of each direction
+        features_dic = defaultdict(list)
+
+        for direction in directions:
+            sheeps_dic = self.perceive(direction)
+
+            ## calculate f1 : direction feature
+            sight_sheeps = sheeps_dic['SIGHT']
+            vector_dif = [np.dot(sheep.SIGHT_DIRECTION, self.SIGHT_DIRECTION) for sheep in sight_sheeps]
+            features_dic[direction].append(np.mean(vector_dif))
+        
+            ## calculate f2 : distance feature
+            distances = [np.linalg.norm(sheep.pos - self.pos) for sheep in sight_sheeps]
+            features_dic[direction].append(np.mean(distances))
+
+            ## calculate f3 : opportunity gain (number of sheeps) of moving towards that direction, based on smell.
+            smell_sheeps = np.array(list(sheeps_dic.values())).flatten()
+            features_dic[direction].append(len(smell_sheeps))
+
+        Qvals = dict([(np.dot(self.WEIGHTS, features_dic[direction]), direction) for direction in directions])
+        maxQ = np.max(list(Qvals.keys()))
+
+        return Qvals[maxQ]
 
 
 class Sheep():
