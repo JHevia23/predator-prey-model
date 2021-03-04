@@ -71,6 +71,7 @@ def simulate(grid, n_iter=300, output_path='test.gif'):
         
         plt.scatter(xs, ys, c=c, s=s)
         plt.scatter(xs_dead, ys_dead, c='blue', s=75, marker='x')
+        plt.title(f"Iteration {i}")
         camera.snap()
 
     animation = camera.animate(interval=20)

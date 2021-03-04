@@ -13,6 +13,8 @@ class Grid():
         self.agent_population = {}
         self.dead_sheep_locations = []
 
+        
+
     def add_agent(self, agent, agent_id):
         ## add agent to the space's population
         
