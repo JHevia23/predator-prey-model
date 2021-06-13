@@ -3,6 +3,10 @@ import custom_utils as utils
 from collections import defaultdict
 
 class Wolf():
+    
+    # params for the RL model
+    LEARNING_RATE = .05
+    LEARNING_DISCOUNT = 1
 
     COUNTER = 1
 
@@ -25,6 +29,7 @@ class Wolf():
         initx = np.random.uniform(low=0, high=self.SPACE.XMAX)
         inity = np.random.uniform(low=0, high=self.SPACE.YMAX)
         self.pos = np.array((initx, inity))
+        
         ## directional vector to simulate actual visible environment
         # its a unitary vector
         self.SIGHT_DIRECTION = utils.normalize(self.pos)
@@ -34,6 +39,7 @@ class Wolf():
         self.ID = utils.TYPE_CONSTANT_WOLF+str(self.COUNTER)
         grid.add_agent(self, agent_id=self.ID)
         Wolf.COUNTER+=1
+        self.KILLED = 0
 
         ## agents' weights for decision
         self.WEIGHTS = np.random.normal(size=3)
@@ -52,6 +58,7 @@ class Wolf():
             # prey and predator
             next_pos = self.pos - prey.pos
             self.DEATH_COUNT += 1
+            self.KILLED += 1
             
         else:
             ## if there aren't, smell for sheep and move
@@ -67,16 +74,17 @@ class Wolf():
         
         ## assign new position to current position
         self.pos = self.pos + next_pos
+        self.SIGHT_DIRECTION = utils.normalize(self.pos)
 
         return self.pos
 
     def locate_sheep(self, sense='SIGHT'):
         '''
         The wolf smells around its Smell Radius and identifies presence of neighbouring
-        sheep.
+        sheep. If Sight, sight radius is used.
 
         The method scans the whole sheep population for calculating distances and then checks
-        if any distance is less than the wolf's smell radius.
+        if any distance is less than the wolf's sense radius.
 
         - Return:
             - closest Sheep Agent or None if there aren't
@@ -84,7 +92,7 @@ class Wolf():
         # identify sheeps that are visible to the wolf
         sheeps = np.array([sheep for sheep in self.SPACE.agent_population.values() if (sheep.TYPE == utils.TYPE_CONSTANT_SHEEP) &
                                                                                       (0 <= np.dot(sheep.SIGHT_DIRECTION, self.SIGHT_DIRECTION) <= 1)]) 
-                                                                                    # only sheeps faced by the wolf
+                                                                                    # only sheeps faced by the wolf from behind
 
         distances = np.array([np.linalg.norm(self.pos - sheep.pos) for sheep in sheeps])
         min_distance = np.min(distances)
@@ -121,11 +129,14 @@ class Wolf():
             
     def perceive(self, direction):
         '''
-        direction: angle to which the wolf is looking (0, 90, 180, 270)
-        build a dictionary of the agents within smell radius and sight radius.
+        Build a dictionary of the agents within smell radius and sight radius.
+        Used for Qvalues calculation.
 
-        - Returns
-            - res_dict, keys: SIGHT, SMELL, values: list with agents
+        - params
+            - direction: angle to which the wolf is looking (0, 90, 180, 270)
+
+        - returns
+            - res_dict with keys: [SIGHT, SMELL] and values: list with agents for each
         '''
         res_dic = {}
 
@@ -178,7 +189,19 @@ class Wolf():
         Qvals = dict([(np.dot(self.WEIGHTS, features_dic[direction]), direction) for direction in directions])
         maxQ = np.max(list(Qvals.keys()))
 
-        return Qvals[maxQ]
+        return Qvals[maxQ], maxQ
+
+    def calculate_reward(self):
+        '''
+        Function to reward the agent either for eating a sheep or getting behind a sheep that doesn't see him
+        '''
+        # get sheep population
+        sheeps = [agent for agent in self.SPACE.agent_population.values() if agent.TYPE == utils.TYPE_CONSTANT_SHEEP]
+        vulnerable_sheeps = [sheep for sheep in sheeps if (np.dot(sheep.SIGHT_DIRECTION, self.SIGHT_DIRECTION) < 0)]
+        ## count how many sheep are now vulnerable
+        vulnerable = len(vulnerable_sheeps)
+
+        return self.KILLED + vulnerable
 
 
 class Sheep():
@@ -246,7 +269,8 @@ class Sheep():
 
         next_pos = utils.check_spatial_coherence(self, next_pos)
         
-        ## update new position
+        ## update new position and direction
         self.pos = self.pos + next_pos
+        self.SIGHT_DIRECTION = self.pos / np.linalg.norm(self.pos)
         
         return self.pos
