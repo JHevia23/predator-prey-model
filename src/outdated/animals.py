@@ -183,7 +183,7 @@ class Wolf():
             features_dic[direction].append(np.mean(distances))
 
             ## calculate f3 : opportunity gain (number of sheeps) of moving towards that direction, based on smell.
-            smell_sheeps = np.array(list(sheeps_dic.values())).flatten()
+            smell_sheeps = np.array(list(sheeps_dic['SMELL'].values())).flatten()
             features_dic[direction].append(len(smell_sheeps))
 
         Qvals = dict([(np.dot(self.WEIGHTS, features_dic[direction]), direction) for direction in directions])
