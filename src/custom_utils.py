@@ -59,7 +59,7 @@ def simulate(grid, n_iter=300, output_path='test.gif'):
             agent = grid.agent_population[key]
 
             ## call each agent's move method to simulate decisions, save new decided position in the grid's agent 
-            grid.agent_population[agent.ID].pos = agent.move()
+            grid.agent_population[agent.ID].pos = agent.move() ## this is where the magic happens
         
         grid.update_population()
 
