@@ -27,11 +27,94 @@ import random
 import numpy as np
 from collections import defaultdict, deque
 
+
 class Sheep:
 
     def __init__(self, xmax, ymax, sheep_id):
         '''
         Constructor for sheep, must be space-agnostic. Should work with any instance of environment.
+
+        SHEEP PARAMS:
+            - SIGHT RADIUS
+            - MOVE_STEPS
+
+        INDIVIDUAL SHEEP PARAMS:
+            - POSITION (as a [x,y] randomized vector)
+            - SIGHT DIRECTION (facing direction)
+            - ID
+        '''
+
+        # self.STAMINA = 100
+        # self.HUNGER = 0
+
+        # add simulation important parameters
+        self.SIGHT_RADIUS = utils.SIGHT_RADIUS_SHEEP
+        self.MOVE_STEPS = utils.MOVE_STEPS_SHEEP
+        self.STATE = utils.STATE_CONSTANT_ALIVE
+
+        initx = np.random.uniform(low=0, high=xmax)
+        inity = np.random.uniform(low=0, high=ymax)
+
+        # it's a tuple representing the coordinates for the wolf position
+        self.pos = np.array((initx, inity))
+        # directional vector to simulate actual visible environment
+        # its a unitary vector
+        self.SIGHT_DIRECTION = self.pos / np.linalg.norm(self.pos)
+
+        # add animal's type id
+        self.TYPE = utils.TYPE_CONSTANT_SHEEP
+        self.ID = utils.TYPE_CONSTANT_SHEEP+str(sheep_id)
+
+    def move(self, farm):
+        '''
+        At each environment step, the sheep will be passed the farm where it is located as an arg.
+        Thus, each sheep can SEE whether there's a nearby wolf or not and act on it.
+        '''
+
+        # locate wolves that are visible to the sheep
+        # TODO: farm must be a dictionary with all agents present and their animal type
+        # wolves = np.array([agent for agent in farm.agent_population['WOLF'].values() if (
+        #     0 <= np.dot(agent.SIGHT_DIRECTION, self.SIGHT_DIRECTION) <= 1)])
+
+        # # this line still holds for many-wolves scenario
+        # distances = np.array([np.linalg.norm(wolf.pos - self.pos)
+        #                      for wolf in wolves])
+        # min_distance = np.min(distances)
+        # nearest_wolf = np.ravel(wolves[np.argwhere(distances == min_distance)])[
+        #     0]  # extract element from raveled list
+
+        wolf = farm.agent_population['WOLF'][1]
+        min_distance = np.linalg.norm(wolf.pos - self.pos)
+
+        if min_distance <= self.SIGHT_RADIUS:
+            # if a wolf is too nearby, the sheep will move further away from it
+            distance_to_wolf = np.array(
+                self.pos - nearest_wolf.pos) / np.linalg.norm(self.pos - nearest_wolf.pos)
+
+            # create rotation matrix to prevent moving exactly in the opposite direction, add some randomness to movement
+            distance_to_wolf = utils.random_rotation(distance_to_wolf)
+
+            next_pos = distance_to_wolf
+
+        else:
+            next_pos = np.random.uniform(-self.MOVE_STEPS,
+                                         self.MOVE_STEPS, size=2)
+
+        # correction to protect against off-bounds movement
+        next_pos = utils.check_spatial_coherence(self, next_pos)
+
+        # update new position and direction
+        self.pos = self.pos + next_pos
+        self.SIGHT_DIRECTION = self.pos / np.linalg.norm(self.pos)
+
+        return self.pos
+
+
+class Wolf:
+
+    def __init__(self, xmax, ymax, wolf_id):
+        '''
+        Constructor for wolf, must be space-agnostic. Should work with any instance of environment.
 
         SHEEP PARAMS:
             - SIGHT RADIUS
@@ -44,80 +127,133 @@ class Sheep:
             - ID
         '''
 
-        self.STAMINA = 100
-        self.HUNGER = 0
-
-        ## add simulation important parameters
-        self.SIGHT_RADIUS = utils.SIGHT_RADIUS_SHEEP
-        self.MOVE_STEPS = 3
+        # self.STAMINA = 100
+        # self.HUNGER = 0
+        self.SPACE = grid
         self.STATE = utils.STATE_CONSTANT_ALIVE
 
+        # define simulation key parameters
+        self.SMELL_RADIUS = utils.SMELL_RADIUS_WOLF
+        self.SIGHT_RADIUS = utils.SIGHT_RADIUS_WOLF
+        self.MOVE_STEPS = utils.MOVE_STEPS_WOLF
+        self.DEATH_COUNT = 0
+
+        # it's a tuple representing the coordinates for the wolf position
         initx = np.random.uniform(low=0, high=xmax)
         inity = np.random.uniform(low=0, high=ymax)
-
-        ## it's a tuple representing the coordinates for the wolf position
         self.pos = np.array((initx, inity))
-        ## directional vector to simulate actual visible environment
+
+        # directional vector to simulate actual visible environment
         # its a unitary vector
-        self.SIGHT_DIRECTION = self.pos / np.linalg.norm(self.pos)
+        self.SIGHT_DIRECTION = utils.normalize(self.pos)
 
-        ## add animal's type id
-        self.TYPE = utils.TYPE_CONSTANT_SHEEP
-        self.ID = utils.TYPE_CONSTANT_SHEEP+str(sheep_id)
+        # define animal's type
+        self.TYPE = utils.TYPE_CONSTANT_WOLF
+        self.ID = utils.TYPE_CONSTANT_WOLF+str(wolf_id)
 
-    def move(self, farm):
+    def perceive(self, direction, farm):
         '''
-        At each environment step, the sheep will be passed the farm where it is located as an arg.
-        Thus, each sheep can SEE whether there's a nearby wolf or not and act on it.
+        Build a dictionary of the agents within smell radius and sight radius.
+        Used for Qvalues calculation.
+
+        - params
+            - direction: angle to which the wolf is looking (0, 90, 180, 270)
+
+        - returns
+            - res_dict with keys: [SIGHT, SMELL] and values: list with sheep agents
         '''
+        res_dic = {}
 
-        # locate wolves that are visible to the sheep
-        ## TODO: farm must be a dictionary with all agents present and their animal type
-        wolves = np.array([agent for agent in farm.agent_population.values() if (agent.TYPE == utils.TYPE_CONSTANT_WOLF) & 
-                                                        (0 <= np.dot(agent.SIGHT_DIRECTION,self.SIGHT_DIRECTION) <= 1 )])
+        sheeps = list(farm.agent_population['SHEEP'].values())
 
-        
-        distances = np.array([np.linalg.norm(wolf.pos - self.pos) for wolf in wolves]) ## this line still holds for many-wolves scenario
-        min_distance = np.min(distances)
-        nearest_wolf = np.ravel(wolves[np.argwhere(distances == min_distance)])[0] ## extract element from raveled list
+        # set angle limits to perceive
+        # 45 degrees because we have 4 directions possible
+        alpha_min = np.deg2rad(direction - 45)
+        alpha_max = np.deg2rad(direction + 45)
 
-        if min_distance <= self.SIGHT_RADIUS:
-            ## if a wolf is too nearby, the sheep will move further away from it
-            distance_to_wolf = np.array(self.pos - nearest_wolf.pos) / np.linalg.norm(self.pos - nearest_wolf.pos)
-            
-            # create rotation matrix to prevent moving exactly in the opposite direction, add some randomness to movement
-            distance_to_wolf = utils.random_rotation(distance_to_wolf)
-            
-            next_pos = distance_to_wolf
+        # detect with SIGHT
+        sight_sheep = [
+            sheep for sheep in sheeps if (np.linalg.norm(sheep.pos - self.pos) <= self.SIGHT_RADIUS) &
+                                         (alpha_min <= np.dot(
+                                             sheep.SIGHT_DIRECTION, self.SIGHT_DIRECTION) <= alpha_max)
+        ]
 
-        else:
-            next_pos = np.random.uniform(-self.MOVE_STEPS, self.MOVE_STEPS, size=2)
+        res_dic['SIGHT'] = sight_sheep
 
-        next_pos = utils.check_spatial_coherence(self, next_pos) ## correction to protect against off-bounds movement
-        
-        ## update new position and direction
-        self.pos = self.pos + next_pos
-        self.SIGHT_DIRECTION = self.pos / np.linalg.norm(self.pos)
-        
-        return self.pos
+        # detect with SMELL
+        smell_sheep = [
+            sheep for sheep in sheeps if (np.linalg.norm(sheep.pos - self.pos) <= self.SMELL_RADIUS) &
+                                         (alpha_min <= np.dot(
+                                             sheep.SIGHT_DIRECTION, self.SIGHT_DIRECTION) <= alpha_max)
+        ]
+
+        res_dic['SMELL'] = smell_sheep
+
+        return res_dic
+
+    def get_env_state(self):
+        # directions to query
+        directions = [0, 90, 180, 270]
+
+        # dic to save the features of each direction
+        features_dic = defaultdict(list)
+        state = []
+
+        for direction in directions:
+            sheeps_dic = self.perceive(direction)
+
+            # calculate f1 : direction feature
+            sight_sheeps = sheeps_dic['SIGHT']
+            vector_dif = [np.dot(sheep.SIGHT_DIRECTION, self.SIGHT_DIRECTION)
+                          for sheep in sight_sheeps]
+            features_dic[direction].append(np.mean(vector_dif))
+
+            # calculate f2 : distance feature
+            distances = [np.linalg.norm(sheep.pos - self.pos)
+                         for sheep in sight_sheeps]
+            features_dic[direction].append(np.mean(distances))
+
+            # calculate f3 : opportunity gain (number of sheeps) of moving towards that direction, based on smell.
+            smell_sheeps = np.array(
+                list(sheeps_dic['SMELL'].values())).flatten()
+            features_dic[direction].append(len(smell_sheeps))
+
+            # build final states array, by adding each direction features
+            state.extend(list(features_dic[direction].values()))
+
+        return state
+
+    def move(self, action):
+
+        if action == 1:
+            # 90 deg move
+            self.pos = np.sum(self.pos, [0, self.MOVE_STEPS])
+        elif action == 2:
+            # 180 deg move
+            self.pos = np.sum(self.pos, [-self.MOVE_STEPS, 0])
+        elif action == 3:
+            # 270 deg move
+            self.pos = np.sum(self.pos, [0, -self.MOVE_STEPS])
+        elif action == 4:
+            self.pos = np.sum(self.pos, [self.MOVE_STEPS, 0])
 
 
 class DQNAgent:
 
     def __init__(self, action_space, state_space):
 
-        self.action_space = action_space
-        self.state_space = state_space
-        self.epsilon = 1 ## for exploration vs explotation policy
-        
-        ## DL params
+        self.action_space = action_space  # 4 directions
+        self.state_space = state_space  # 12 (3 feats per direction)
+        self.epsilon = 1  # for exploration vs explotation policy
+
+        # DL params
         self.gamma = .95
         self.batch_size = 64
         self.epsilon_min = .01
         self.epsilon_decay = .995
         self.learning_rate = 0.001
         self.memory = deque(maxlen=100000)
-        
+
         self.model = self.build_model()
 
     def build_model(self):
@@ -143,11 +279,12 @@ class DQNAgent:
         Choose between exploration or explotation approach and return action
         '''
         if np.random.rand() <= self.epsilon:
-            return random.randrange(self.action_space) ## randrange always returns an random int from list(range(0, self.action_space))
-        
+            # randrange always returns an random int from list(range(0, self.action_space))
+            return random.randrange(self.action_space)
+
         act_values = self.model.predict(state)
 
-        ## TODO: act_values[0] is a list??
+        # TODO: act_values[0] is a list??
         return np.argmax(act_values[0])
 
     def replay(self):
@@ -157,7 +294,7 @@ class DQNAgent:
         '''
 
         if len(self.memory) < self.batch_size:
-            ## accumulate observations until enough memory to replay-train
+            # accumulate observations until enough memory to replay-train
             return
 
         minibatch = random.sample(self.memory, self.batch_size)
@@ -170,17 +307,17 @@ class DQNAgent:
         states = np.squeeze(states)
         next_states = np.squeeze(next_states)
 
-        ## TODO: WHAT's this?????
-        targets = rewards + self.gamma*(np.amax(self.model.predict_on_batch(next_states), axis=1))*(1-dones)
-        
+        # TODO: WHAT's this?????
+        targets = rewards + self.gamma * \
+            (np.amax(self.model.predict_on_batch(next_states), axis=1))*(1-dones)
+
         targets_full = self.model.predict_on_batch(states)
 
         ind = np.array([i for i in range(self.batch_size)])
         targets_full[[ind], [actions]] = targets
 
         self.model.fit(states, targets_full, epochs=1, verbose=0)
-        
-        ## decrease epsilon to shift policy towards a more conservative one
+
+        # decrease epsilon to shift policy towards a more conservative one
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
-
