@@ -32,3 +32,6 @@ for e in range(episode):
             print("episode: {}/{}, score: {}".format(e, episode, score))
             break
     loss.append(score)
+
+plt.plot(list(range(episode)), loss)
+plt.show()
